@@ -141,11 +141,6 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 		return registry
 	}
 
-	nodeType, err := getNodeType(ctx, client)
-	if err != nil {
-		e.logger.Errorf("Registry - Cannot get node type to check if this is a mongos : %s", err)
-	}
-
 	isArbiter, err := isArbiter(ctx, client)
 	if err != nil {
 		e.logger.Errorf("Registry - Cannot get arbiterOnly to check if this is arbiter role : %s", err)
@@ -180,22 +175,6 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 		e.opts.EnableIndexStats = false
 	}
 
-	// If we manually set the collection names we want or auto discovery is set.
-	if (len(e.opts.CollStatsNamespaces) > 0 || e.opts.DiscoveringMode) && e.opts.EnableCollStats && limitsOk && requestOpts.EnableCollStats {
-		cc := newCollectionStatsCollector(ctx, client, e.opts.Logger,
-			e.opts.CompatibleMode, e.opts.DiscoveringMode,
-			topologyInfo, e.opts.CollStatsNamespaces)
-		registry.MustRegister(cc)
-	}
-
-	// If we manually set the collection names we want or auto discovery is set.
-	if (len(e.opts.IndexStatsCollections) > 0 || e.opts.DiscoveringMode) && e.opts.EnableIndexStats && limitsOk && requestOpts.EnableIndexStats {
-		ic := newIndexStatsCollector(ctx, client, e.opts.Logger,
-			e.opts.DiscoveringMode, e.opts.EnableOverrideDescendingIndex,
-			topologyInfo, e.opts.IndexStatsCollections)
-		registry.MustRegister(ic)
-	}
-
 	if e.opts.EnableDiagnosticData && requestOpts.EnableDiagnosticData {
 		ddc := newDiagnosticDataCollector(ctx, client, e.opts.Logger,
 			e.opts.CompatibleMode, topologyInfo)
@@ -206,19 +185,6 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 		cc := newDBStatsCollector(ctx, client, e.opts.Logger,
 			e.opts.CompatibleMode, topologyInfo, nil)
 		registry.MustRegister(cc)
-	}
-
-	if e.opts.EnableTopMetrics && nodeType != typeMongos && limitsOk && requestOpts.EnableTopMetrics {
-		tc := newTopCollector(ctx, client, e.opts.Logger,
-			e.opts.CompatibleMode, topologyInfo)
-		registry.MustRegister(tc)
-	}
-
-	// replSetGetStatus is not supported through mongos.
-	if e.opts.EnableReplicasetStatus && nodeType != typeMongos && requestOpts.EnableReplicasetStatus {
-		rsgsc := newReplicationSetStatusCollector(ctx, client, e.opts.Logger,
-			e.opts.CompatibleMode, topologyInfo)
-		registry.MustRegister(rsgsc)
 	}
 
 	return registry

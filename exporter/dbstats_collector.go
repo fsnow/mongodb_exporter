@@ -92,6 +92,13 @@ func (d *dbstatsCollector) collect(ch chan<- prometheus.Metric) {
 		// to differentiate metrics between different databases.
 		labels["database"] = db
 
+		// filter the dbStats for the two required metrics
+		for k := range dbStats {
+			if k != "indexes" && k != "dataSize" {
+				delete(dbStats, k)
+			}
+		}
+
 		newMetrics := makeMetrics(prefix, dbStats, labels, d.compatibleMode)
 		for _, metric := range newMetrics {
 			ch <- metric

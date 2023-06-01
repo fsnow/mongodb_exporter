@@ -63,6 +63,7 @@ func (d *diagnosticDataCollector) collect(ch chan<- prometheus.Metric) {
 	defer prometheus.MeasureCollectTime(ch, "mongodb", "diagnostic_data")()
 
 	var m bson.M
+	var stats bson.M
 
 	logger := d.base.logger
 	client := d.base.client
@@ -92,31 +93,19 @@ func (d *diagnosticDataCollector) collect(ch chan<- prometheus.Metric) {
 	logger.Debug("getDiagnosticData result")
 	debugResult(logger, m)
 
-	metrics := makeMetrics("", m, d.topologyInfo.baseLabels(), d.compatibleMode)
-	metrics = append(metrics, locksMetrics(logger, m)...)
-
-	securityMetric, err := d.getSecurityMetricFromLineOptions(client)
-	if err != nil {
-		logger.Errorf("cannot decode getCmdLineOtpions: %s", err)
-	} else if securityMetric != nil {
-		metrics = append(metrics, securityMetric)
+	// filter getDiagnosticData result for the one required metric
+	stats, ok = m["local.oplog.rs.stats"].(bson.M)
+	if !ok {
+		err := errors.Wrapf(errUnexpectedDataType, "%T for data field", m["local.oplog.rs.stats"])
+		logger.Errorf("cannot get local.oplog.rs.stats: %s", err)
 	}
+	var minimal_m = bson.M{"local.oplog.rs.stats": bson.M{"storageSize": stats["storageSize"]}}
+
+	metrics := makeMetrics("", minimal_m, d.topologyInfo.baseLabels(), d.compatibleMode)
 
 	if d.compatibleMode {
+		// need this for mongodb_mongod_replset_oplog_head_timestamp
 		metrics = append(metrics, specialMetrics(d.ctx, client, m, logger)...)
-
-		if cem, err := cacheEvictedTotalMetric(m); err == nil {
-			metrics = append(metrics, cem)
-		}
-
-		nodeType, err := getNodeType(d.ctx, client)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"component": "diagnosticDataCollector",
-			}).Errorf("Cannot get node type to check if this is a mongos: %s", err)
-		} else if nodeType == typeMongos {
-			metrics = append(metrics, mongosMetrics(d.ctx, client, logger)...)
-		}
 	}
 
 	for _, metric := range metrics {

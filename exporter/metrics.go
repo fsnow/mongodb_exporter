@@ -246,6 +246,8 @@ func makeMetrics(prefix string, m bson.M, labels map[string]string, compatibleMo
 	}
 
 	for k, val := range m {
+		//fmt.Printf("k: %s\n", k)
+		//fmt.Printf("prefix: %s\n", prefix)
 		switch v := val.(type) {
 		case bson.M:
 			res = append(res, makeMetrics(prefix+k, v, labels, compatibleMode)...)
@@ -258,6 +260,8 @@ func makeMetrics(prefix string, m bson.M, labels map[string]string, compatibleMo
 			continue
 		default:
 			rm, err := makeRawMetric(prefix, k, v, labels)
+			//fmt.Printf("%+v\n", rm)
+			//fmt.Printf("\n")
 			if err != nil {
 				invalidMetric := prometheus.NewInvalidMetric(prometheus.NewInvalidDesc(err), err)
 				res = append(res, invalidMetric)
@@ -272,12 +276,9 @@ func makeMetrics(prefix string, m bson.M, labels map[string]string, compatibleMo
 
 			metrics := []*rawMetric{rm}
 
-			if renamedMetrics := metricRenameAndLabel(rm, specialConversions()); renamedMetrics != nil {
-				metrics = renamedMetrics
-			}
-
 			for _, m := range metrics {
 				metric, err := rawToPrometheusMetric(m)
+
 				if err != nil {
 					invalidMetric := prometheus.NewInvalidMetric(prometheus.NewInvalidDesc(err), err)
 					res = append(res, invalidMetric)
@@ -345,9 +346,11 @@ func metricRenameAndLabel(rm *rawMetric, convs []conversion) []*rawMetric {
 	// check if the metric exists in the conversions array.
 	// if it exists, it should be converted.
 	var result []*rawMetric
+	//fmt.Printf("%s\n", rm.fqName)
 	for _, cm := range convs {
 		switch {
 		case cm.newName != "" && rm.fqName == cm.newName: // first renaming case. See (1)
+			//fmt.Printf("%+v\n", cm)
 			result = append(result, newToOldMetric(rm, cm))
 
 		case cm.prefix != "" && strings.HasPrefix(rm.fqName, cm.prefix): // second renaming case. See (2)
@@ -363,68 +366,10 @@ func metricRenameAndLabel(rm *rawMetric, convs []conversion) []*rawMetric {
 			}
 		}
 	}
-
+	/*
+		for _, r := range result {
+			fmt.Printf("%+v\n", r)
+		}
+	*/
 	return result
-}
-
-// specialConversions returns a list of special conversions we want to implement.
-// See: https://jira.percona.com/browse/PMM-6506
-func specialConversions() []conversion {
-	return []conversion{
-		{
-			oldName:     "mongodb_ss_opLatencies_ops",
-			prefix:      "mongodb_ss_opLatencies",
-			suffixLabel: "op_type",
-			suffixMapping: map[string]string{
-				"commands_ops":     "commands",
-				"reads_ops":        "reads",
-				"transactions_ops": "transactions",
-				"writes_ops":       "writes",
-			},
-		},
-		{
-			oldName:     "mongodb_ss_opLatencies_latency",
-			prefix:      "mongodb_ss_opLatencies",
-			suffixLabel: "op_type",
-			suffixMapping: map[string]string{
-				"commands_latency":     "commands",
-				"reads_latency":        "reads",
-				"transactions_latency": "transactions",
-				"writes_latency":       "writes",
-			},
-		},
-		// mongodb_ss_wt_concurrentTransactions_read_out
-		// mongodb_ss_wt_concurrentTransactions_write_out
-		{
-			oldName:     "mongodb_ss_wt_concurrentTransactions_out",
-			prefix:      "mongodb_ss_wt_concurrentTransactions",
-			suffixLabel: "txn_rw",
-			suffixMapping: map[string]string{
-				"read_out":  "read",
-				"write_out": "write",
-			},
-		},
-		// mongodb_ss_wt_concurrentTransactions_read_available
-		// mongodb_ss_wt_concurrentTransactions_write_available
-		{
-			oldName:     "mongodb_ss_wt_concurrentTransactions_available",
-			prefix:      "mongodb_ss_wt_concurrentTransactions",
-			suffixLabel: "txn_rw",
-			suffixMapping: map[string]string{
-				"read_available":  "read",
-				"write_available": "write",
-			},
-		},
-		// mongodb_ss_wt_concurrentTransactions_read_totalTickets
-		// mongodb_ss_wt_concurrentTransactions_write_totalTickets
-		{
-			oldName:     "mongodb_ss_wt_concurrentTransactions_totalTickets",
-			prefix:      "mongodb_ss_wt_concurrentTransactions",
-			suffixLabel: "txn_rw",
-			suffixMapping: map[string]string{
-				"read_totalTickets":  "read",
-				"write_totalTickets": "write",
-			},
-		},
-	}
 }
